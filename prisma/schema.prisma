@@ -1,0 +1,92 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                   String         @id @default(cuid())
+  email                String         @unique
+  name                 String
+  password             String
+  phone                String?
+  avatar               String?
+  city                 String?
+  state                String?
+  bio                  String?
+  pagarmeRecipientId   String?
+  bankDataCompleted    Boolean        @default(false)
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  listings             Listing[]
+  buyerOrders          Order[]        @relation("buyer_orders")
+  sellerOrders         Order[]        @relation("seller_orders")
+  buyerConversations   Conversation[] @relation("buyer_conversations")
+  sellerConversations  Conversation[] @relation("seller_conversations")
+  messages             Message[]
+}
+
+model Listing {
+  id            String         @id @default(cuid())
+  title         String
+  description   String
+  price         Int
+  category      String
+  condition     String
+  images        String[]
+  city          String
+  state         String
+  status        String         @default("active")
+  seller        User           @relation(fields: [sellerId], references: [id])
+  sellerId      String
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  orders        Order[]
+  conversations Conversation[]
+}
+
+model Order {
+  id               String    @id @default(cuid())
+  listing          Listing   @relation(fields: [listingId], references: [id])
+  listingId        String
+  buyer            User      @relation("buyer_orders", fields: [buyerId], references: [id])
+  buyerId          String
+  seller           User      @relation("seller_orders", fields: [sellerId], references: [id])
+  sellerId         String
+  amount           Int
+  commission       Int
+  sellerAmount     Int
+  pagarmeOrderId   String?   @unique
+  checkoutUrl      String?
+  status           String    @default("pending")
+  paidAt           DateTime?
+  createdAt        DateTime  @default(now())
+}
+
+model Conversation {
+  id        String    @id @default(cuid())
+  listing   Listing   @relation(fields: [listingId], references: [id])
+  listingId String
+  buyer     User      @relation("buyer_conversations", fields: [buyerId], references: [id])
+  buyerId   String
+  seller    User      @relation("seller_conversations", fields: [sellerId], references: [id])
+  sellerId  String
+  messages  Message[]
+  createdAt DateTime  @default(now())
+
+  @@unique([listingId, buyerId])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  conversationId String
+  sender         User         @relation(fields: [senderId], references: [id])
+  senderId       String
+  content        String
+  readAt         DateTime?
+  createdAt      DateTime     @default(now())
+}
