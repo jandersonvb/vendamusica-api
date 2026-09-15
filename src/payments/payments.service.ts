@@ -1,110 +1,96 @@
-import { Injectable } from '@nestjs/common';
-import { Listing, User } from '@prisma/client';
-import { PagarmeClient } from './pagarme.client';
+import { HttpException, HttpStatus, Inject, Injectable } from "@nestjs/common";
+import { PAYMENT_GATEWAY } from "./payment-gateway.interface";
+import type {
+  Balance,
+  PaymentGateway,
+  RecipientInput,
+  RecipientResult,
+} from "./payment-gateway.interface";
+import { SplitBreakdown, buildSplitParts, computeSplit } from "./split";
 
-type CreateRecipientData = {
-  name: string;
-  email: string;
-  document: string;
-  bankCode: string;
-  agency: string;
-  account: string;
-  accountType: string;
+type CreateChargeParams = {
+  orderCode: string;
+  description: string;
+  buyer: { name: string; email: string; document?: string };
+  paymentMethod: string;
+  installments?: number;
+  sellerRecipientId: string;
+  breakdown: SplitBreakdown;
+  successUrl?: string;
 };
 
-type CreateOrderData = {
-  listing: Listing;
-  buyer: Omit<User, 'password'>;
-  sellerRecipientId: string;
+export type CreateChargeResult = {
+  gatewayOrderId: string;
+  checkoutUrl: string | null;
+  status: string;
+  commission: number;
+  sellerAmount: number;
+  platformAmount: number;
 };
 
 @Injectable()
 export class PaymentsService {
-  constructor(private readonly pagarmeClient: PagarmeClient) {}
+  constructor(
+    @Inject(PAYMENT_GATEWAY) private readonly gateway: PaymentGateway,
+  ) {}
 
-  createRecipient(data: CreateRecipientData) {
-    return this.pagarmeClient.post('/recipients', {
-      name: data.name,
-      email: data.email,
-      document: data.document,
-      type: 'individual',
-      default_bank_account: {
-        holder_name: data.name,
-        holder_type: 'individual',
-        holder_document: data.document,
-        bank: data.bankCode,
-        branch_number: data.agency,
-        account_number: data.account,
-        type: data.accountType,
-      },
-    });
+  createRecipient(data: RecipientInput): Promise<RecipientResult> {
+    return this.gateway.createRecipient(data);
   }
 
-  async createOrder(data: CreateOrderData) {
-    const amount = data.listing.price;
-    const commission = Math.round(amount * 0.05);
-    const sellerAmount = amount - commission;
-    const platformRecipientId = process.env.PAGARME_PLATFORM_RECIPIENT_ID;
+  getRecipient(recipientId: string): Promise<RecipientResult> {
+    return this.gateway.getRecipient(recipientId);
+  }
 
-    const order = await this.pagarmeClient.post('/orders', {
-      customer: {
-        name: data.buyer.name,
-        email: data.buyer.email,
-        type: 'individual',
-      },
-      items: [
-        {
-          amount,
-          description: data.listing.title,
-          quantity: 1,
-          code: data.listing.id,
-        },
-      ],
-      payments: [
-        {
-          payment_method: 'checkout',
-          checkout: {
-            expires_in: 60 * 60 * 24,
-            billing_address_editable: true,
-            customer_editable: true,
-            accepted_payment_methods: ['credit_card', 'pix', 'boleto'],
-            success_url: process.env.FRONTEND_URL,
-          },
-          split: [
-            {
-              amount: sellerAmount,
-              recipient_id: data.sellerRecipientId,
-              type: 'flat',
-              options: {
-                charge_processing_fee: false,
-                charge_remainder_fee: false,
-                liable: false,
-              },
-            },
-            {
-              amount: commission,
-              recipient_id: platformRecipientId,
-              type: 'flat',
-              options: {
-                charge_processing_fee: true,
-                charge_remainder_fee: true,
-                liable: true,
-              },
-            },
-          ],
-        },
-      ],
+  getBalance(recipientId: string): Promise<Balance> {
+    return this.gateway.getBalance(recipientId);
+  }
+
+  /**
+   * Calcula o split e cria a cobrança no gateway. Fonte única da regra
+   * de divisão — usada tanto pelo checkout quanto pelo fluxo legado.
+   */
+  async createCharge(params: CreateChargeParams): Promise<CreateChargeResult> {
+    // Em mock o recebedor da plataforma é fictício (o MockGateway ignora).
+    // Em live ele é obrigatório — sem ele o split não tem para onde mandar a comissão.
+    const isMock = process.env.PAYMENTS_MODE === "mock";
+    // `||` (não `??`) porque a env costuma vir como string vazia, não undefined.
+    const platformRecipientId =
+      process.env.ASAAS_PLATFORM_WALLET_ID ||
+      process.env.PAGARME_PLATFORM_RECIPIENT_ID ||
+      (isMock ? "mock_platform_recipient" : undefined);
+    if (!platformRecipientId) {
+      throw new HttpException(
+        "ASAAS_PLATFORM_WALLET_ID not configured",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+
+    const split = computeSplit(params.breakdown);
+    const parts = buildSplitParts(
+      params.sellerRecipientId,
+      platformRecipientId,
+      split,
+    );
+
+    const charge = await this.gateway.createCharge({
+      orderCode: params.orderCode,
+      description: params.description,
+      amount: params.breakdown.total,
+      buyer: params.buyer,
+      paymentMethod: params.paymentMethod,
+      installments: params.installments,
+      split: parts,
+      successUrl: params.successUrl,
     });
 
     return {
-      pagarmeOrderId: order.id,
-      checkoutUrl:
-        order.checkouts?.[0]?.payment_url ??
-        order.checkout_url ??
-        order.url ??
-        null,
-      commission,
-      sellerAmount,
+      gatewayOrderId: charge.gatewayOrderId,
+      checkoutUrl: charge.checkoutUrl,
+      status: charge.status,
+      commission: split.commission,
+      sellerAmount: split.sellerAmount,
+      platformAmount: split.platformAmount,
     };
   }
 }

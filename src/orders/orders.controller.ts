@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { OrdersService } from './orders.service';
@@ -21,5 +29,15 @@ export class OrdersController {
   @Get()
   findByUser(@Req() req: AuthenticatedRequest) {
     return this.ordersService.findByUser(req.user.userId);
+  }
+
+  @Get(':id')
+  findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.ordersService.findOne(req.user.userId, id);
+  }
+
+  @Post(':id/pay')
+  pay(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.ordersService.payMock(req.user.userId, id);
   }
 }

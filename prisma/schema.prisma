@@ -7,8 +7,15 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum ChatMessageType {
+  TEXT
+  IMAGE
+  AUDIO
+  FILE
+}
+
 model User {
-  id                   String         @id @default(cuid())
+  id                   String         @id @default(uuid())
   email                String         @unique
   name                 String
   password             String
@@ -17,8 +24,16 @@ model User {
   city                 String?
   state                String?
   bio                  String?
-  pagarmeRecipientId   String?
+  asaasWalletId        String?
   bankDataCompleted    Boolean        @default(false)
+  recipientStatus      String?        @default("pending")
+  ratingAverage        Float          @default(0)
+  ratingCount          Int            @default(0)
+  storeName            String?
+  storeSlug            String?        @unique
+  storeBanner          String?
+  isVerified           Boolean        @default(false)
+  followersCount       Int            @default(0)
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt
   listings             Listing[]
@@ -27,29 +42,115 @@ model User {
   buyerConversations   Conversation[] @relation("buyer_conversations")
   sellerConversations  Conversation[] @relation("seller_conversations")
   messages             Message[]
+  messageReactions     MessageReaction[]
+  favorites            Favorite[]
+  cartItems            CartItem[]
+  authoredReviews      Review[]       @relation("review_author")
+  receivedReviews      Review[]       @relation("review_seller")
+  following            Follow[]       @relation("follow_follower")
+  followers            Follow[]       @relation("follow_seller")
+  sentOffers           Offer[]        @relation("offer_sender")
+  addresses            Address[]
 }
 
 model Listing {
-  id            String         @id @default(cuid())
+  id            String         @id @default(uuid())
   title         String
   description   String
   price         Int
+  comparePrice  Int?
   category      String
   condition     String
+  brand         String?
+  model         String?
+  year          Int?
+  color         String?
+  tags          String[]       @default([])
+  includedItems String[]       @default([])
+  specifications Json?
+  acceptsTrade  Boolean        @default(false)
+  allowsPickup  Boolean        @default(false)
+  installments  Int?
+  zipCode       String?
+  street        String?
+  number        String?
+  district      String?
   images        String[]
   city          String
   state         String
   status        String         @default("active")
+  views         Int            @default(0)
   seller        User           @relation(fields: [sellerId], references: [id])
   sellerId      String
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   orders        Order[]
   conversations Conversation[]
+  favoritedBy   Favorite[]
+  cartItems     CartItem[]
+  reviews       Review[]
+
+  @@index([sellerId])
+  @@index([category])
+  @@index([status])
+}
+
+model Review {
+  id        String   @id @default(uuid())
+  rating    Int
+  comment   String?
+  author    User     @relation("review_author", fields: [authorId], references: [id])
+  authorId  String
+  seller    User     @relation("review_seller", fields: [sellerId], references: [id])
+  sellerId  String
+  listing   Listing? @relation(fields: [listingId], references: [id])
+  listingId String?
+  createdAt DateTime @default(now())
+
+  @@unique([authorId, sellerId, listingId])
+  @@index([sellerId])
+  @@index([listingId])
+}
+
+model Follow {
+  id         String   @id @default(uuid())
+  follower   User     @relation("follow_follower", fields: [followerId], references: [id])
+  followerId String
+  seller     User     @relation("follow_seller", fields: [sellerId], references: [id])
+  sellerId   String
+  createdAt  DateTime @default(now())
+
+  @@unique([followerId, sellerId])
+  @@index([sellerId])
+}
+
+model Favorite {
+  id        String   @id @default(uuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  listing   Listing  @relation(fields: [listingId], references: [id])
+  listingId String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, listingId])
+  @@index([userId])
+}
+
+model CartItem {
+  id        String   @id @default(uuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  listing   Listing  @relation(fields: [listingId], references: [id])
+  listingId String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, listingId])
+  @@index([userId])
+  @@index([listingId])
 }
 
 model Order {
-  id               String    @id @default(cuid())
+  id               String    @id @default(uuid())
   listing          Listing   @relation(fields: [listingId], references: [id])
   listingId        String
   buyer            User      @relation("buyer_orders", fields: [buyerId], references: [id])
@@ -59,7 +160,19 @@ model Order {
   amount           Int
   commission       Int
   sellerAmount     Int
-  pagarmeOrderId   String?   @unique
+  shippingMethod     String?
+  shippingCost       Int       @default(0)
+  couponCode         String?
+  discount           Int       @default(0)
+  pixDiscount        Int       @default(0)
+  serviceFee         Int       @default(0)
+  buyerProtectionFee Int       @default(0)
+  total              Int       @default(0)
+  paymentMethod      String?
+  installments       Int       @default(1)
+  shippingAddress    Json?
+  offerId            String?
+  gatewayPaymentId String?   @unique
   checkoutUrl      String?
   status           String    @default("pending")
   paidAt           DateTime?
@@ -67,7 +180,7 @@ model Order {
 }
 
 model Conversation {
-  id        String    @id @default(cuid())
+  id        String    @id @default(uuid())
   listing   Listing   @relation(fields: [listingId], references: [id])
   listingId String
   buyer     User      @relation("buyer_conversations", fields: [buyerId], references: [id])
@@ -75,18 +188,103 @@ model Conversation {
   seller    User      @relation("seller_conversations", fields: [sellerId], references: [id])
   sellerId  String
   messages  Message[]
+  offers    Offer[]
+  buyerLastReadAt  DateTime?
+  sellerLastReadAt DateTime?
+  lastMessageAt    DateTime  @default(now())
   createdAt DateTime  @default(now())
 
   @@unique([listingId, buyerId])
+  @@index([lastMessageAt])
+}
+
+model Offer {
+  id             String       @id @default(uuid())
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  conversationId String
+  sender         User         @relation("offer_sender", fields: [senderId], references: [id])
+  senderId       String
+  amount         Int
+  status         String       @default("pending")
+  expiresAt      DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId])
 }
 
 model Message {
-  id             String       @id @default(cuid())
-  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  id             String          @id @default(uuid())
+  conversation   Conversation    @relation(fields: [conversationId], references: [id])
   conversationId String
-  sender         User         @relation(fields: [senderId], references: [id])
+  sender         User            @relation(fields: [senderId], references: [id])
   senderId       String
   content        String
+  type           ChatMessageType @default(TEXT)
+  mediaUrl       String?
+  mediaMimeType  String?
+  mediaSize      Int?
+  mediaFileName  String?
+  replyToMessageId String?
+  replyTo        Message?        @relation("MessageReplies", fields: [replyToMessageId], references: [id], onDelete: SetNull)
+  replies        Message[]       @relation("MessageReplies")
+  reactions      MessageReaction[]
+  deliveredAt    DateTime?
   readAt         DateTime?
-  createdAt      DateTime     @default(now())
+  editedAt       DateTime?
+  deletedAt      DateTime?
+  deletedForEveryone Boolean     @default(false)
+  createdAt      DateTime        @default(now())
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([replyToMessageId])
+}
+
+model MessageReaction {
+  id        String   @id @default(uuid())
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  messageId String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  emoji     String
+  createdAt DateTime @default(now())
+
+  @@unique([messageId, userId])
+  @@index([messageId])
+  @@index([userId])
+}
+
+model Address {
+  id            String   @id @default(uuid())
+  user          User     @relation(fields: [userId], references: [id])
+  userId        String
+  label         String?
+  recipientName String
+  zipCode       String
+  street        String
+  number        String
+  complement    String?
+  district      String
+  city          String
+  state         String
+  phone         String?
+  isDefault     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model Coupon {
+  id          String    @id @default(uuid())
+  code        String    @unique
+  type        String
+  value       Int
+  minAmount   Int?
+  maxDiscount Int?
+  active      Boolean   @default(true)
+  expiresAt   DateTime?
+  usageLimit  Int?
+  usedCount   Int       @default(0)
+  createdAt   DateTime  @default(now())
 }

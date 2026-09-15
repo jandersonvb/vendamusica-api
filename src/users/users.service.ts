@@ -20,16 +20,31 @@ export class UsersService {
     return this.prisma.user.findUnique({ where: { email } });
   }
 
-  async updateRecipient(id: string, recipientId: string) {
+  async updateRecipient(id: string, recipientId: string, status: string) {
     const user = await this.prisma.user.update({
       where: { id },
       data: {
-        pagarmeRecipientId: recipientId,
+        asaasWalletId: recipientId,
         bankDataCompleted: true,
+        recipientStatus: status,
       },
     });
 
     const { password: _password, ...userWithoutPassword } = user;
     return userWithoutPassword;
+  }
+
+  /** Atualiza só o status do recebedor (chamado pelo webhook do gateway). */
+  updateRecipientStatus(recipientId: string, status: string) {
+    return this.prisma.user.updateMany({
+      where: { asaasWalletId: recipientId },
+      data: { recipientStatus: status },
+    });
+  }
+
+  findByRecipientId(recipientId: string) {
+    return this.prisma.user.findFirst({
+      where: { asaasWalletId: recipientId },
+    });
   }
 }

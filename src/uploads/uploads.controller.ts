@@ -15,7 +15,7 @@ export class UploadsController {
 
   @UseGuards(JwtAuthGuard)
   @Post('images')
-  @UseInterceptors(FilesInterceptor('images', 5))
+  @UseInterceptors(FilesInterceptor('images', 6))
   async uploadImages(@UploadedFiles() files: Express.Multer.File[]) {
     const urls = await this.uploadsService.uploadImages(files);
     return { urls };

@@ -34,9 +34,29 @@ export class ListingsController {
     return this.listingsService.findAll(filters);
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Get('me')
+  findMine(
+    @Req() req: AuthenticatedRequest,
+    @Query('status') status?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.listingsService.findMine(req.user.userId, {
+      status,
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+    });
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.listingsService.findOne(id);
+  }
+
+  @Get(':id/related')
+  findRelated(@Param('id') id: string) {
+    return this.listingsService.findRelated(id);
   }
 
   @UseGuards(JwtAuthGuard)

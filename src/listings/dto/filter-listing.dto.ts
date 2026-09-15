@@ -1,5 +1,5 @@
-import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString } from 'class-validator';
 
 export class FilterListingDto {
   @IsOptional()
@@ -19,6 +19,32 @@ export class FilterListingDto {
   search?: string;
 
   @IsOptional()
+  @IsString()
+  condition?: string;
+
+  @IsOptional()
+  @IsString()
+  brand?: string;
+
+  @IsOptional()
+  @IsString()
+  sellerId?: string;
+
+  @IsOptional()
+  @IsString()
+  tag?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsBoolean()
+  acceptsTrade?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  sellerMinRating?: number;
+
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   minPrice?: number;
@@ -27,6 +53,10 @@ export class FilterListingDto {
   @Type(() => Number)
   @IsInt()
   maxPrice?: number;
+
+  @IsOptional()
+  @IsIn(['recent', 'price_asc', 'price_desc', 'views'])
+  sort?: string;
 
   @IsOptional()
   @Type(() => Number)
