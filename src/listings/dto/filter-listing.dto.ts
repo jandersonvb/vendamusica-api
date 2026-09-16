@@ -54,6 +54,16 @@ export class FilterListingDto {
   @IsInt()
   maxPrice?: number;
 
+  /** personal = só pessoa física · store = só lojas */
+  @IsOptional()
+  @IsIn(['personal', 'store'])
+  accountType?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsBoolean()
+  verifiedOnly?: boolean;
+
   @IsOptional()
   @IsIn(['recent', 'price_asc', 'price_desc', 'views'])
   sort?: string;

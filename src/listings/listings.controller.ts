@@ -12,12 +12,14 @@ import {
 } from '@nestjs/common';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { CreateListingDto } from './dto/create-listing.dto';
 import { FilterListingDto } from './dto/filter-listing.dto';
 import { UpdateListingDto } from './dto/update-listing.dto';
 import { ListingsService } from './listings.service';
 
 type AuthenticatedRequest = Request & { user: { userId: string } };
+type MaybeAuthenticatedRequest = Request & { user?: { userId: string } };
 
 @Controller('listings')
 export class ListingsController {
@@ -59,6 +61,20 @@ export class ListingsController {
     return this.listingsService.findRelated(id);
   }
 
+  /**
+   * Revela o contato do vendedor e registra o lead.
+   * `channel`: whatsapp | phone.
+   */
+  @UseGuards(OptionalJwtAuthGuard)
+  @Get(':id/contact')
+  getContact(
+    @Param('id') id: string,
+    @Req() req: MaybeAuthenticatedRequest,
+    @Query('channel') channel = 'whatsapp',
+  ) {
+    return this.listingsService.getContact(id, channel, req.user?.userId);
+  }
+
   @UseGuards(JwtAuthGuard)
   @Patch(':id')
   update(
@@ -67,6 +83,24 @@ export class ListingsController {
     @Body() dto: UpdateListingDto,
   ) {
     return this.listingsService.update(id, req.user.userId, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/publish')
+  publish(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.listingsService.publish(id, req.user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/unpublish')
+  unpublish(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.listingsService.unpublish(id, req.user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/sold')
+  markAsSold(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.listingsService.markAsSold(id, req.user.userId);
   }
 
   @UseGuards(JwtAuthGuard)

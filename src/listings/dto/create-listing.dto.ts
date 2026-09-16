@@ -7,6 +7,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  IsUrl,
   Length,
   Max,
   Min,
@@ -22,9 +23,11 @@ export class CreateListingDto {
   @MinLength(10)
   description: string;
 
+  /** Centavos. Omitir = "sob consulta" (comum em loja). */
+  @IsOptional()
   @IsInt()
   @Min(100)
-  price: number;
+  price?: number;
 
   @IsOptional()
   @IsInt()
@@ -79,11 +82,10 @@ export class CreateListingDto {
   @IsBoolean()
   allowsPickup?: boolean;
 
+  /** Link de vídeo (YouTube). Liberado a partir do plano Pro. */
   @IsOptional()
-  @IsInt()
-  @Min(1)
-  @Max(24)
-  installments?: number;
+  @IsUrl()
+  videoUrl?: string;
 
   @IsOptional()
   @IsString()
@@ -102,8 +104,9 @@ export class CreateListingDto {
   @IsString()
   district?: string;
 
+  /** O teto real de fotos vem do plano; 20 é o limite absoluto. */
   @IsArray()
-  @ArrayMaxSize(6)
+  @ArrayMaxSize(20)
   @IsString({ each: true })
   images: string[];
 

@@ -1,100 +1,64 @@
-# Backlog de Backend — VendaMusica
+# Backlog de Backend — VendaMusica (modelo vitrine)
 
-Inventário das features de backend necessárias para suportar as telas do marketplace.
-Legenda: ✅ pronto · ⚠️ parcial · 🆕 novo · 🟢 pequeno · 🟡 médio · 🔴 grande
+> **Virada de modelo (set/2026):** o projeto deixou de ser marketplace com
+> checkout e virou **vitrine por assinatura**, no estilo do NexAtlas Sales.
+> A plataforma não intermedia o pagamento do instrumento: o comprador fala
+> direto com o vendedor e quem paga a plataforma é o vendedor, pelo plano.
+> O código de checkout/carrinho/pedidos/split está no commit `eee83ba`.
 
-> Estratégia: rodar tudo local em **mock** (sem custo). Partes 🔴 que dependem de
-> serviço externo (Correios, gateway de pagamento real, OAuth) ficam mockadas por ora.
+Legenda: ✅ pronto · ⚠️ parcial · 🆕 a fazer · 🟢 pequeno · 🟡 médio · 🔴 grande
 
-## Ordem de implementação (roadmap)
+## Pronto
 
-| # | Feature | Tamanho | Status |
-|---|---------|---------|--------|
-| A | Tipo de conta (role) | 🟢 | Pulado (modelo C2C; vender exige só dados bancários) |
-| B | Anúncio enriquecido (marca, modelo, ano, cor, tags, aceita-troca, rascunho, views, specs) + filtros | 🟡 | **✅ Concluída** |
-| C | Favoritos | 🟢 | **✅ Concluída** |
-| D | Avaliações / ratings | 🟡 | **✅ Concluída** |
-| E | Perfil de loja (nome fantasia, verificado, seguir, stats) | 🟡 | **✅ Concluída** |
-| F | Visualizações + métricas do dashboard | 🟡 | **✅ Concluída** |
-| G | Propostas / negociação no chat | 🟡 | **✅ Concluída** |
-| H | Checkout single-item (endereço, frete mock, cupom, pagamento mock, preço negociado) | 🔴 | **✅ Concluída** |
-| I | Reset de senha / login social | 🟡 | A fazer |
+| Domínio | O que existe |
+|---|---|
+| Identidade | Cadastro/login/JWT, `accountType` (personal \| store), documento, admin |
+| Anúncio | CRUD, preço opcional ("sob consulta"), vídeo, fotos por plano, specs |
+| Ciclo do anúncio | draft → pending_review → active/rejected · paused · sold |
+| Curadoria | Fila de aprovação, aprovar/recusar com motivo, verificar vendedor |
+| Busca | Filtros + `accountType`, `verifiedOnly`; ordem: destaque > plano > critério |
+| Planos | 4 planos em banco, cota de anúncios/fotos, vídeo, prioridade, trial 30d |
+| Procura-se | CRUD, cruzamento automático com anúncios, resumo público, lista paga |
+| Leads | Registro por canal, painel com série de 30 dias, top anúncios, conversão |
+| Loja | Perfil por id e por slug, endereço/horário/site, seguir, lojas em destaque |
+| Avaliação | Exige conversa prévia no chat (sem transação para comprovar) |
+| Chat | Tempo real, mídia, reações, reply, propostas de preço, recibos |
+| Denúncia | Aberta a visitante, fila e resolução no admin |
 
-## Detalhe por domínio
+## Próximos passos
 
-### 1. Identidade & Conta
-- ✅ Cadastro / login / `/me`
-- 🆕 Reset de senha (tokens + email) 🟡
-- 🆕 Login social Google/Facebook (OAuth) 🟡
-- 🆕 Verificação de vendedor ("Loja verificada") 🟡
+| # | Item | Tam. | Por quê |
+|---|---|---|---|
+| 1 | **Validar preço dos planos com 5-10 lojas** | — | Antes de codar cobrança. Os preços atuais são hipótese |
+| 2 | Cobrança de assinatura (Asaas recorrente) | 🔴 | Recuperar `AsaasClient` do commit `eee83ba` |
+| 3 | Destaque pago do anúncio (boost) | 🟡 | `isFeatured`/`featuredUntil` já existem no schema; falta compra e expiração |
+| 4 | Notificação de match do Procura-se (e-mail) | 🟡 | Hoje o match é criado, mas ninguém é avisado |
+| 5 | Recuperação de senha + e-mails transacionais | 🟡 | Buraco antigo, independe do modelo |
+| 6 | Uploads na S3 (SDK já instalado) | 🟡 | Hoje grava em disco local |
+| 7 | Categorias e marcas como tabela | 🟡 | Hoje texto livre; trava SEO e filtro por tipo |
+| 8 | Busca full-text (Postgres ou Meilisearch) | 🟡 | `contains` não escala |
+| 9 | Páginas de SEO por cidade/categoria | 🟡 | Principal fonte de tráfego orgânico |
+| 10 | Geolocalização da loja ("perto de mim") | 🟡 | Pede lat/lng no cadastro da loja |
+| 11 | Histórico de preços (a partir de `soldAt`) | 🔴 | Diferencial de longo prazo; depende de volume |
+| 12 | Extrair `Store` do `User` | 🟡 | Só quando a loja precisar de mais de um usuário |
 
-### 2. Anúncio enriquecido (Feature B)
-- ✅ CRUD básico + upload de imagens
-- 🆕 Campos: brand, model, year, color, tags, acceptsTrade, allowsPickup, zipCode,
-  installments, includedItems, specifications, comparePrice (preço "de") 🟡
-- 🆕 Status rascunho (draft) 🟢
-- 🆕 Contador de visualizações (views) 🟡
-- 🆕 Produtos relacionados 🟡
+## Prompts de integração do frontend
 
-### 3. Categorias
-- 🆕 Taxonomia + subcategorias + contagem por categoria 🟡
+Um por frente, em `docs/frontend-prompts/`, na ordem:
 
-### 4. Busca avançada
-- ✅ Filtros básicos + paginação
-- 🆕 Full-text (título/marca/modelo/tags), filtro por marca, ordenação, facet counts,
-  "mais buscados" 🟡
+1. `01-remover-checkout.md` — tirar carrinho/checkout/pedidos, CTA de contato
+2. `02-contato-e-leads.md` — botões de contato e painel de contatos
+3. `03-procura-se.md` — desejo de compra e demanda
+4. `04-planos-e-cotas.md` — planos, assinatura, cotas
+5. `05-loja-curadoria-moderacao.md` — loja, aprovação, denúncia, admin
 
-### 5. Favoritos (Feature C)
-- 🆕 Modelo Favorite + add/remover/listar + flag isFavorited 🟢
+## Contas do seed
 
-### 6. Avaliações & Reputação (Feature D)
-- 🆕 Modelo Review + agregação (nota média/total) + % positivas 🟡
+| Conta | E-mail | Senha |
+|---|---|---|
+| Loja (plano Pro) | `loja.demo@vendamusica.com` | `demo123456` |
+| Pessoa física (grátis) | `vendedor.demo@vendamusica.com` | `demo123456` |
+| Admin | `admin@vendamusica.com` | `demo123456` |
 
-### 7. Perfil de Loja (Feature E)
-- 🆕 Dados da loja (nome, logo, banner, desde, tempo de resposta, políticas) 🟡
-- 🆕 Seguidores (seguir/deixar de seguir) 🟢
-- 🆕 Stats agregados (total de vendas, nota) 🟡
-
-### 8. Dashboard & Analytics (Feature F)
-- ⚠️ Meus anúncios / meus pedidos
-- 🆕 Métricas (vendas/mês, views, mensagens pendentes, ticket médio) 🟡
-- 🆕 Série temporal pra gráficos + donut de status 🟡
-
-### 9. Notificações
-- 🆕 Modelo Notification + listar + contagem não-lidas 🟢
-
-### 10. Negociação / Propostas (Feature G)
-- ✅ Chat em tempo real
-- ✅ Modelo Offer (valor, status, contraproposta) + eventos socket
-- ✅ Read receipts + presença online
-
-### 10b. Chat estilo Messenger (Feature G2) — **✅ Concluída**
-- ✅ Presença online (`user:online`/`user:offline`) + `users:online`
-- ✅ Typing indicators (`typing:start`/`typing:stop`)
-- ✅ Recibos por mensagem: entregue (`deliveredAt`) + lido (`readAt`) → ✓✓
-- ✅ Paginação por cursor (infinite scroll) + `GET /conversations/unread/count`
-- ✅ Mídia (imagem/áudio/arquivo) via `POST /conversations/:id/media`
-- ✅ Reply (`replyToMessageId`), editar, apagar (para todos), reações (emoji)
-- ✅ Busca textual na conversa
-- Prompt de integração: `docs/frontend-prompts/chat-messenger.md`
-
-### 11. Carrinho & Checkout (Feature H)
-- ⚠️ Criar pedido simples (mock)
-- 🆕 Carrinho, endereços, frete, cupons, métodos de pagamento, taxa de serviço,
-  proteção ao comprador, status estendido 🔴
-
-### 11b. Split de pagamento (Pagar.me) — **✅ Concluída**
-- ✅ Porta `PaymentGateway` + adapters `PagarmeGateway`/`MockGateway` (troca de gateway = 1 linha)
-- ✅ Split real conectado ao checkout (vendedor + plataforma somam o total)
-- ✅ Comissão única via `PLATFORM_COMMISSION_RATE` (default 10%) — fim do 5% vs 10%
-- ✅ Onboarding do vendedor como recebedor + status KYC (`recipientStatus`) + saldo
-- ✅ Webhook ampliado: paid/failed/refunded/chargeback + `recipient.updated`
-- ✅ `PAYMENTS_MODE=mock` mantém dev local sem custo
-- Prompt de integração: `docs/frontend-prompts/payments-split.md`
-
-### 12. Home / Vitrine
-- 🆕 Endpoints de vitrine (destaques, lojas recomendadas, mais buscados),
-  stats da plataforma, newsletter 🟢
-
-### 13. Frete / CEP
-- 🆕 Lookup de CEP (ViaCEP) + cálculo de frete 🔴
+Banco local: `docker compose up -d` — Postgres na porta **5433** do host
+(a 5432 costuma estar ocupada por outro projeto).

@@ -1,8 +1,10 @@
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { LeadsService } from '../leads/leads.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateStoreDto } from './dto/update-store.dto';
 
+/** Perfil público da loja. Contato sai por /sellers/:id/contact (vira lead). */
 const storeSelect = {
   id: true,
   name: true,
@@ -10,9 +12,13 @@ const storeSelect = {
   bio: true,
   city: true,
   state: true,
+  accountType: true,
   storeName: true,
   storeSlug: true,
   storeBanner: true,
+  storeAddress: true,
+  storeHours: true,
+  storeWebsite: true,
   isVerified: true,
   ratingAverage: true,
   ratingCount: true,
@@ -22,29 +28,42 @@ const storeSelect = {
 
 @Injectable()
 export class SellersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly leadsService: LeadsService,
+  ) {}
 
-  async getProfile(id: string) {
+  getProfile(id: string) {
+    return this.buildProfile({ id });
+  }
+
+  getProfileBySlug(slug: string) {
+    return this.buildProfile({ storeSlug: slug });
+  }
+
+  private async buildProfile(where: Prisma.UserWhereUniqueInput) {
     const seller = await this.prisma.user.findUnique({
-      where: { id },
-      select: storeSelect,
+      where,
+      select: { ...storeSelect, whatsapp: true, publicPhone: true },
     });
 
     if (!seller) {
-      throw new HttpException('Seller not found', HttpStatus.NOT_FOUND);
+      throw new HttpException('Vendedor não encontrado', HttpStatus.NOT_FOUND);
     }
 
-    const [listingsCount, salesCount, totalReviews, positiveReviews] =
+    const { whatsapp, publicPhone, ...publicData } = seller;
+
+    const [listingsCount, soldCount, totalReviews, positiveReviews] =
       await this.prisma.$transaction([
         this.prisma.listing.count({
-          where: { sellerId: id, status: 'active' },
+          where: { sellerId: seller.id, status: 'active' },
         }),
-        this.prisma.order.count({
-          where: { sellerId: id, status: 'paid' },
+        this.prisma.listing.count({
+          where: { sellerId: seller.id, status: 'sold' },
         }),
-        this.prisma.review.count({ where: { sellerId: id } }),
+        this.prisma.review.count({ where: { sellerId: seller.id } }),
         this.prisma.review.count({
-          where: { sellerId: id, rating: { gte: 4 } },
+          where: { sellerId: seller.id, rating: { gte: 4 } },
         }),
       ]);
 
@@ -54,10 +73,15 @@ export class SellersService {
         : Math.round((positiveReviews / totalReviews) * 100);
 
     return {
-      ...seller,
+      ...publicData,
+      contact: {
+        whatsapp: Boolean(whatsapp),
+        phone: Boolean(publicPhone),
+        chat: true,
+      },
       stats: {
         listingsCount,
-        salesCount,
+        soldCount,
         followersCount: seller.followersCount,
         ratingAverage: seller.ratingAverage,
         ratingCount: seller.ratingCount,
@@ -66,9 +90,33 @@ export class SellersService {
     };
   }
 
+  /** Contato da loja a partir da página dela (fora de um anúncio). */
+  async getContact(sellerId: string, channel: string, visitorId?: string) {
+    const seller = await this.prisma.user.findUnique({
+      where: { id: sellerId },
+      select: { id: true, name: true, storeName: true, whatsapp: true, publicPhone: true },
+    });
+
+    if (!seller) {
+      throw new HttpException('Vendedor não encontrado', HttpStatus.NOT_FOUND);
+    }
+
+    await this.leadsService.register(
+      { sellerId, channel, source: 'store_page' },
+      visitorId,
+    );
+
+    return {
+      sellerName: seller.storeName ?? seller.name,
+      whatsapp: channel === 'whatsapp' ? seller.whatsapp : null,
+      phone: channel === 'phone' ? seller.publicPhone : null,
+      suggestedMessage: `Olá! Vi sua loja no VendaMúsica e queria saber mais.`,
+    };
+  }
+
   async follow(followerId: string, sellerId: string) {
     if (followerId === sellerId) {
-      throw new HttpException('Cannot follow yourself', HttpStatus.BAD_REQUEST);
+      throw new HttpException('Não dá para seguir a si mesmo', HttpStatus.BAD_REQUEST);
     }
 
     const seller = await this.prisma.user.findUnique({
@@ -77,7 +125,7 @@ export class SellersService {
     });
 
     if (!seller) {
-      throw new HttpException('Seller not found', HttpStatus.NOT_FOUND);
+      throw new HttpException('Vendedor não encontrado', HttpStatus.NOT_FOUND);
     }
 
     await this.prisma.follow.upsert({
@@ -92,9 +140,7 @@ export class SellersService {
   }
 
   async unfollow(followerId: string, sellerId: string) {
-    await this.prisma.follow.deleteMany({
-      where: { followerId, sellerId },
-    });
+    await this.prisma.follow.deleteMany({ where: { followerId, sellerId } });
 
     const followersCount = await this.recomputeFollowers(sellerId);
 
@@ -110,22 +156,36 @@ export class SellersService {
     return follows.map((follow) => follow.sellerId);
   }
 
+  /** Lojas em destaque na home — plano Premium primeiro. */
+  featuredStores(limit = 8) {
+    return this.prisma.user.findMany({
+      where: {
+        accountType: 'store',
+        listings: { some: { status: 'active' } },
+      },
+      select: {
+        ...storeSelect,
+        _count: { select: { listings: true } },
+      },
+      orderBy: [{ searchPriority: 'desc' }, { followersCount: 'desc' }],
+      take: Math.min(Math.max(limit, 1), 24),
+    });
+  }
+
   async updateMyStore(userId: string, dto: UpdateStoreDto) {
     try {
-      const updated = await this.prisma.user.update({
+      return await this.prisma.user.update({
         where: { id: userId },
         data: dto,
-        select: storeSelect,
+        select: { ...storeSelect, whatsapp: true, publicPhone: true, document: true },
       });
-
-      return updated;
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
         throw new HttpException(
-          'Store slug already in use',
+          'Esse endereço de loja já está em uso',
           HttpStatus.CONFLICT,
         );
       }

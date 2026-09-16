@@ -10,7 +10,8 @@ services:
       POSTGRES_USER: vendamusica_user
       POSTGRES_PASSWORD: vendamusica_dev_2026
     ports:
-      - "5432:5432"
+      # 5433 no host: a 5432 costuma estar ocupada por outro projeto.
+      - "5433:5432"
     volumes:
       - vendamusica_postgres_data:/var/lib/postgresql/data
 

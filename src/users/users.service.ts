@@ -9,7 +9,7 @@ export class UsersService {
     const user = await this.prisma.user.findUnique({ where: { id } });
 
     if (!user) {
-      throw new HttpException('User not found', HttpStatus.NOT_FOUND);
+      throw new HttpException('Usuário não encontrado', HttpStatus.NOT_FOUND);
     }
 
     const { password: _password, ...userWithoutPassword } = user;
@@ -18,33 +18,5 @@ export class UsersService {
 
   findByEmail(email: string) {
     return this.prisma.user.findUnique({ where: { email } });
-  }
-
-  async updateRecipient(id: string, recipientId: string, status: string) {
-    const user = await this.prisma.user.update({
-      where: { id },
-      data: {
-        asaasWalletId: recipientId,
-        bankDataCompleted: true,
-        recipientStatus: status,
-      },
-    });
-
-    const { password: _password, ...userWithoutPassword } = user;
-    return userWithoutPassword;
-  }
-
-  /** Atualiza só o status do recebedor (chamado pelo webhook do gateway). */
-  updateRecipientStatus(recipientId: string, status: string) {
-    return this.prisma.user.updateMany({
-      where: { asaasWalletId: recipientId },
-      data: { recipientStatus: status },
-    });
-  }
-
-  findByRecipientId(recipientId: string) {
-    return this.prisma.user.findFirst({
-      where: { asaasWalletId: recipientId },
-    });
   }
 }

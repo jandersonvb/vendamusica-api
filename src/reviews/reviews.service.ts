@@ -27,7 +27,25 @@ export class ReviewsService {
     });
 
     if (!seller) {
-      throw new HttpException('Seller not found', HttpStatus.NOT_FOUND);
+      throw new HttpException('Vendedor não encontrado', HttpStatus.NOT_FOUND);
+    }
+
+    // Sem checkout, a conversa é a única prova de contato real. Exigi-la é o
+    // que impede avaliação inventada por quem nunca falou com o vendedor.
+    const conversation = await this.prisma.conversation.findFirst({
+      where: {
+        sellerId: dto.sellerId,
+        buyerId: authorId,
+        ...(dto.listingId ? { listingId: dto.listingId } : {}),
+      },
+      select: { id: true },
+    });
+
+    if (!conversation) {
+      throw new HttpException(
+        'Você só pode avaliar um vendedor com quem já conversou pelo chat',
+        HttpStatus.FORBIDDEN,
+      );
     }
 
     const review = await this.prisma.review.create({

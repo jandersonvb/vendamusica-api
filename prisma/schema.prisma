@@ -14,6 +14,8 @@ enum ChatMessageType {
   FILE
 }
 
+/// Vitrine: a plataforma não intermedia pagamento de instrumento. O vendedor
+/// assina um plano e o comprador fala com ele direto (WhatsApp, telefone, chat).
 model User {
   id                   String         @id @default(uuid())
   email                String         @unique
@@ -24,40 +26,104 @@ model User {
   city                 String?
   state                String?
   bio                  String?
-  asaasWalletId        String?
-  bankDataCompleted    Boolean        @default(false)
-  recipientStatus      String?        @default("pending")
+  /// personal = pessoa física · store = loja
+  accountType          String         @default("personal")
+  /// CPF ou CNPJ, só dígitos. Usado na verificação do vendedor.
+  document             String?
   ratingAverage        Float          @default(0)
   ratingCount          Int            @default(0)
   storeName            String?
   storeSlug            String?        @unique
   storeBanner          String?
+  storeAddress         String?
+  storeHours           String?
+  storeWebsite         String?
+  /// Canais públicos de contato — é por aqui que o negócio acontece.
+  whatsapp             String?
+  publicPhone          String?
   isVerified           Boolean        @default(false)
+  isAdmin              Boolean        @default(false)
   followersCount       Int            @default(0)
+  /// Peso do plano na ordenação da busca. Espelha Plan.searchPriority.
+  searchPriority       Int            @default(0)
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt
   listings             Listing[]
-  buyerOrders          Order[]        @relation("buyer_orders")
-  sellerOrders         Order[]        @relation("seller_orders")
+  subscription         Subscription?
   buyerConversations   Conversation[] @relation("buyer_conversations")
   sellerConversations  Conversation[] @relation("seller_conversations")
   messages             Message[]
   messageReactions     MessageReaction[]
   favorites            Favorite[]
-  cartItems            CartItem[]
   authoredReviews      Review[]       @relation("review_author")
   receivedReviews      Review[]       @relation("review_seller")
   following            Follow[]       @relation("follow_follower")
   followers            Follow[]       @relation("follow_seller")
   sentOffers           Offer[]        @relation("offer_sender")
-  addresses            Address[]
+  wantedItems          WantedItem[]
+  leads                Lead[]         @relation("lead_visitor")
+  receivedLeads        Lead[]         @relation("lead_seller")
+  reports              Report[]       @relation("report_author")
+
+  @@index([accountType])
+  @@index([storeSlug])
+}
+
+/// Plano de vitrine. Cota de anúncios/fotos, vídeo e posição na busca —
+/// tudo o que diferencia um plano do outro é configuração, não código.
+model Plan {
+  id             String         @id @default(uuid())
+  slug           String         @unique
+  name           String
+  description    String?
+  /// Centavos por período. 0 = plano grátis.
+  priceCents     Int            @default(0)
+  /// monthly | quarterly | yearly
+  billingPeriod  String         @default("monthly")
+  /// null = ilimitado
+  listingLimit   Int?
+  photoLimit     Int            @default(8)
+  allowsVideo    Boolean        @default(false)
+  /// Destaque da loja na home/cidade
+  highlightHome  Boolean        @default(false)
+  /// Ver a lista completa de "Procura-se" (o resumo é público)
+  seesWantedList Boolean        @default(false)
+  searchPriority Int            @default(0)
+  /// personal | store | both
+  audience       String         @default("both")
+  trialDays      Int            @default(0)
+  sortOrder      Int            @default(0)
+  active         Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  subscriptions  Subscription[]
+}
+
+model Subscription {
+  id               String    @id @default(uuid())
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId           String    @unique
+  plan             Plan      @relation(fields: [planId], references: [id])
+  planId           String
+  /// trialing | active | canceled | expired
+  status           String    @default("trialing")
+  trialEndsAt      DateTime?
+  currentPeriodEnd DateTime?
+  startedAt        DateTime  @default(now())
+  canceledAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([planId])
+  @@index([status])
 }
 
 model Listing {
   id            String         @id @default(uuid())
   title         String
   description   String
-  price         Int
+  /// Centavos. null = "sob consulta" (comum em loja).
+  price         Int?
   comparePrice  Int?
   category      String
   condition     String
@@ -70,28 +136,119 @@ model Listing {
   specifications Json?
   acceptsTrade  Boolean        @default(false)
   allowsPickup  Boolean        @default(false)
-  installments  Int?
   zipCode       String?
   street        String?
   number        String?
   district      String?
   images        String[]
+  /// Link de vídeo (YouTube), liberado por plano.
+  videoUrl      String?
   city          String
   state         String
-  status        String         @default("active")
+  /// draft | pending_review | active | rejected | paused | sold | deleted
+  status        String         @default("draft")
+  rejectionReason String?
+  publishedAt   DateTime?
+  soldAt        DateTime?
+  /// Destaque pago: isFeatured é o que a busca ordena, featuredUntil expira.
+  isFeatured    Boolean        @default(false)
+  featuredUntil DateTime?
   views         Int            @default(0)
   seller        User           @relation(fields: [sellerId], references: [id])
   sellerId      String
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
-  orders        Order[]
   conversations Conversation[]
   favoritedBy   Favorite[]
-  cartItems     CartItem[]
   reviews       Review[]
+  leads         Lead[]
+  wantedMatches WantedMatch[]
+  reports       Report[]
 
   @@index([sellerId])
   @@index([category])
+  @@index([status])
+  @@index([isFeatured])
+  @@index([city, state])
+}
+
+/// "Procura-se": o comprador registra o que quer e a plataforma cruza com os
+/// anúncios. É o que gera demanda antes de existir oferta.
+model WantedItem {
+  id          String        @id @default(uuid())
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  title       String
+  category    String
+  brand       String?
+  model       String?
+  /// Teto de preço em centavos
+  maxPrice    Int?
+  condition   String?
+  city        String?
+  state       String?
+  description String?
+  /// active | fulfilled | archived
+  status      String        @default("active")
+  notifyEmail Boolean       @default(true)
+  expiresAt   DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  matches     WantedMatch[]
+
+  @@index([userId])
+  @@index([category])
+  @@index([status])
+}
+
+model WantedMatch {
+  id            String     @id @default(uuid())
+  wantedItem    WantedItem @relation(fields: [wantedItemId], references: [id], onDelete: Cascade)
+  wantedItemId  String
+  listing       Listing    @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  listingId     String
+  buyerNotified Boolean    @default(false)
+  createdAt     DateTime   @default(now())
+
+  @@unique([wantedItemId, listingId])
+  @@index([listingId])
+}
+
+/// Contato gerado pela vitrine. É a métrica que prova o valor do plano.
+model Lead {
+  id        String   @id @default(uuid())
+  seller    User     @relation("lead_seller", fields: [sellerId], references: [id], onDelete: Cascade)
+  sellerId  String
+  listing   Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  listingId String?
+  /// Visitante logado, quando houver
+  visitor   User?    @relation("lead_visitor", fields: [visitorId], references: [id], onDelete: SetNull)
+  visitorId String?
+  /// whatsapp | phone | chat | email | store_page | wanted
+  channel   String
+  /// Onde o clique aconteceu (listing_page, store_page, search...)
+  source    String?
+  createdAt DateTime @default(now())
+
+  @@index([sellerId, createdAt])
+  @@index([listingId])
+  @@index([channel])
+}
+
+model Report {
+  id         String    @id @default(uuid())
+  listing    Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  listingId  String
+  reporter   User?     @relation("report_author", fields: [reporterId], references: [id], onDelete: SetNull)
+  reporterId String?
+  reason     String
+  details    String?
+  /// open | reviewed | removed
+  status     String    @default("open")
+  createdAt  DateTime  @default(now())
+  reviewedAt DateTime?
+
+  @@index([listingId])
   @@index([status])
 }
 
@@ -136,49 +293,6 @@ model Favorite {
   @@index([userId])
 }
 
-model CartItem {
-  id        String   @id @default(uuid())
-  user      User     @relation(fields: [userId], references: [id])
-  userId    String
-  listing   Listing  @relation(fields: [listingId], references: [id])
-  listingId String
-  createdAt DateTime @default(now())
-
-  @@unique([userId, listingId])
-  @@index([userId])
-  @@index([listingId])
-}
-
-model Order {
-  id               String    @id @default(uuid())
-  listing          Listing   @relation(fields: [listingId], references: [id])
-  listingId        String
-  buyer            User      @relation("buyer_orders", fields: [buyerId], references: [id])
-  buyerId          String
-  seller           User      @relation("seller_orders", fields: [sellerId], references: [id])
-  sellerId         String
-  amount           Int
-  commission       Int
-  sellerAmount     Int
-  shippingMethod     String?
-  shippingCost       Int       @default(0)
-  couponCode         String?
-  discount           Int       @default(0)
-  pixDiscount        Int       @default(0)
-  serviceFee         Int       @default(0)
-  buyerProtectionFee Int       @default(0)
-  total              Int       @default(0)
-  paymentMethod      String?
-  installments       Int       @default(1)
-  shippingAddress    Json?
-  offerId            String?
-  gatewayPaymentId String?   @unique
-  checkoutUrl      String?
-  status           String    @default("pending")
-  paidAt           DateTime?
-  createdAt        DateTime  @default(now())
-}
-
 model Conversation {
   id        String    @id @default(uuid())
   listing   Listing   @relation(fields: [listingId], references: [id])
@@ -198,6 +312,8 @@ model Conversation {
   @@index([lastMessageAt])
 }
 
+/// Proposta de preço dentro do chat. Sem pagamento: serve para os dois
+/// combinarem o valor antes de fechar fora da plataforma.
 model Offer {
   id             String       @id @default(uuid())
   conversation   Conversation @relation(fields: [conversationId], references: [id])
@@ -252,39 +368,4 @@ model MessageReaction {
   @@unique([messageId, userId])
   @@index([messageId])
   @@index([userId])
-}
-
-model Address {
-  id            String   @id @default(uuid())
-  user          User     @relation(fields: [userId], references: [id])
-  userId        String
-  label         String?
-  recipientName String
-  zipCode       String
-  street        String
-  number        String
-  complement    String?
-  district      String
-  city          String
-  state         String
-  phone         String?
-  isDefault     Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  @@index([userId])
-}
-
-model Coupon {
-  id          String    @id @default(uuid())
-  code        String    @unique
-  type        String
-  value       Int
-  minAmount   Int?
-  maxDiscount Int?
-  active      Boolean   @default(true)
-  expiresAt   DateTime?
-  usageLimit  Int?
-  usedCount   Int       @default(0)
-  createdAt   DateTime  @default(now())
 }

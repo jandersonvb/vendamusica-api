@@ -1,4 +1,4 @@
-import { IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsOptional, IsString, Matches, MinLength } from 'class-validator';
 
 export class CreateUserDto {
   @IsEmail()
@@ -23,4 +23,21 @@ export class CreateUserDto {
   @IsOptional()
   @IsString()
   state?: string;
+
+  /** personal = pessoa física · store = loja (define planos e vitrine). */
+  @IsOptional()
+  @IsIn(['personal', 'store'])
+  accountType?: string;
+
+  @IsOptional()
+  @IsString()
+  storeName?: string;
+
+  /** Canal principal de contato da vitrine. Só dígitos, com DDD. */
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{10,15}$/, {
+    message: 'whatsapp deve conter apenas dígitos, com DDD (ex.: 5531999998888)',
+  })
+  whatsapp?: string;
 }
